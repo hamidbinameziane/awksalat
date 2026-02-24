@@ -1,8 +1,10 @@
 
 package com.example.awksalat
 
+import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
 import android.widget.RemoteViews
 import com.example.awksalat.R
@@ -26,6 +28,14 @@ class PrayerWidgetProvider : HomeWidgetProvider() {
                 setTextViewText(R.id.next_prayer_name, nextPrayerName)
                 setTextViewText(R.id.next_prayer_time, nextPrayerTime)
                 setTextViewText(R.id.widget_time_left, timeLeft)
+
+                // Add PendingIntent to launch the app on tap
+                val intent = Intent(context, MainActivity::class.java)
+                val pendingIntent = PendingIntent.getActivity(
+                    context, 0, intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                setOnClickPendingIntent(R.id.widget_root, pendingIntent)
             }
             appWidgetManager.updateAppWidget(widgetId, views)
         }

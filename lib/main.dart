@@ -235,74 +235,73 @@ class _PrayerScreenState extends State<PrayerScreen> {
 
     return Scaffold(
       body: SafeArea(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 45),
-            child: isLoading
-                ? const CircularProgressIndicator(color: Colors.white24)
-                : Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        customHijriDate,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          color: Colors.white70,
-                          fontWeight: FontWeight.w300,
+        child: isLoading
+            ? const Center(child: CircularProgressIndicator(color: Colors.white24))
+            : Padding(
+                padding: const EdgeInsets.all(10),
+                child: Column(
+                  children: [
+                    // Hijri Date
+                    Flexible(
+                      flex: 1,
+                      child: FittedBox(
+                        fit: BoxFit.contain,
+                        child: Text(
+                          customHijriDate,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontWeight: FontWeight.w300,
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 10),
-                      const Divider(color: Colors.white10, thickness: 1),
-                      const SizedBox(height: 30),
-                      if (todayPrayers != null)
-                        Table(
-                          columnWidths: const {
-                            0: FlexColumnWidth(1),
-                            1: FlexColumnWidth(1.1),
-                          },
-                          children: todayPrayers!.entries.map((entry) {
-                            return _prayerRow(
-                              entry.key,
-                              entry.value,
-                              entry.key == nextPrayerName,
-                            );
-                          }).toList(),
-                        ),
-                    ],
-                  ),
-          ),
-        ),
+                    ),
+                    const Divider(color: Colors.white10, thickness: 1),
+                    
+                    if (todayPrayers != null)
+                      ...todayPrayers!.entries.map((entry) {
+                        bool isNext = entry.key == nextPrayerName;
+                        return Expanded(
+                          flex: 2,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 2),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: FittedBox(
+                                    alignment: Alignment.centerRight,
+                                    fit: BoxFit.contain,
+                                    child: Text(
+                                      entry.key,
+                                      style: TextStyle(
+                                        color: isNext ? Colors.white : Colors.white38,
+                                        fontWeight: isNext ? FontWeight.bold : FontWeight.normal,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: FittedBox(
+                                    alignment: Alignment.centerLeft,
+                                    fit: BoxFit.contain,
+                                    child: Text(
+                                      entry.value,
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: isNext ? Colors.greenAccent : Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                  ],
+                ),
+              ),
       ),
-    );
-  }
-
-  TableRow _prayerRow(String label, String time, bool isNext) {
-    return TableRow(
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 18,
-              color: isNext ? Colors.white : Colors.white38,
-              fontWeight: isNext ? FontWeight.bold : FontWeight.normal,
-            ),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          child: Text(
-            time,
-            style: TextStyle(
-              fontSize: 21,
-              fontWeight: FontWeight.bold,
-              color: isNext ? Colors.greenAccent : Colors.white,
-            ),
-          ),
-        ),
-      ],
     );
   }
 }
