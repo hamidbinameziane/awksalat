@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:hijri/hijri_calendar.dart';
@@ -31,16 +33,61 @@ class PrayerScreen extends StatefulWidget {
   State<PrayerScreen> createState() => _PrayerScreenState();
 }
 
-class _PrayerScreenState extends State<PrayerScreen> {
+class _PrayerScreenState extends State<PrayerScreen>
+    with WidgetsBindingObserver {
   Map<String, String>? todayPrayers;
   String? nextPrayerName;
   bool isLoading = true;
+  Timer? _refreshTimer;
+
+  // Cached data for frequent updates
+  Map<String, String>? _cachedTodayRaw;
+  Map<String, String>? _cachedTomorrowRaw;
+  DateTime? _cachedTodayDate;
+
+  String? _lastSentTimeLeft;
+  String? timeLeftString;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     HijriCalendar.setLocal('ar'); // Mois et Jours en Arabe
     loadPrayerTimes();
+    _startRefreshTimer();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Small delay to ensure the app is fully resumed
+      Future.delayed(const Duration(milliseconds: 500), () {
+        loadPrayerTimes();
+        _startRefreshTimer();
+      });
+    } else if (state == AppLifecycleState.paused) {
+      _refreshTimer?.cancel();
+    }
+  }
+
+  void _startRefreshTimer() {
+    _refreshTimer?.cancel();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_cachedTodayRaw != null && _cachedTodayDate != null) {
+        _calculateAndUpdateWidget(
+          _cachedTodayDate!,
+          _cachedTodayRaw!,
+          _cachedTomorrowRaw,
+        );
+      }
+    });
   }
 
   Future<void> loadPrayerTimes() async {
@@ -56,11 +103,11 @@ class _PrayerScreenState extends State<PrayerScreen> {
       for (String line in lines) {
         if (line.trim().isEmpty) continue;
         List<String> columns = line.split(',');
-        
+
         // Parse mm-dd format (e.g., 08-11)
         List<String> dateParts = columns[0].split('-');
         if (dateParts.length != 2) continue;
-        
+
         int month = int.parse(dateParts[0]);
         int day = int.parse(dateParts[1]);
 
@@ -75,9 +122,7 @@ class _PrayerScreenState extends State<PrayerScreen> {
             "العشاء": columns[6],
           };
         } else if (foundToday) {
-          tomorrowRaw = {
-            "الفجر": columns[1],
-          };
+          tomorrowRaw = {"الفجر": columns[1]};
           break;
         }
       }
@@ -85,14 +130,18 @@ class _PrayerScreenState extends State<PrayerScreen> {
       // Special case: if today is Dec 31st, tomorrow is Jan 1st (first line)
       if (foundToday && tomorrowRaw == null && lines.isNotEmpty) {
         for (String line in lines) {
-           if (line.trim().isEmpty) continue;
-           List<String> columns = line.split(',');
-           tomorrowRaw = {"الفجر": columns[1]};
-           break;
+          if (line.trim().isEmpty) continue;
+          List<String> columns = line.split(',');
+          tomorrowRaw = {"الفجر": columns[1]};
+          break;
         }
       }
 
       if (todayRaw != null) {
+        _cachedTodayRaw = todayRaw;
+        _cachedTomorrowRaw = tomorrowRaw;
+        _cachedTodayDate = now;
+
         setState(() {
           todayPrayers = todayRaw!.map(
             (key, value) => MapEntry(key, _formatTime(value)),
@@ -163,20 +212,23 @@ class _PrayerScreenState extends State<PrayerScreen> {
       nextDateTime = null;
     }
 
-    setState(() {
-      nextPrayerName = nextName;
-    });
+    if (nextName != nextPrayerName && mounted) {
+      setState(() {
+        nextPrayerName = nextName;
+      });
+    }
 
     String timeLeft = "";
     if (nextDateTime != null) {
       final difference = nextDateTime.difference(now);
       final hours = difference.inHours;
       final minutes = difference.inMinutes % 60;
-      
+      final seconds = difference.inSeconds % 60;
+
       if (hours > 0) {
         timeLeft = "متبقي $hours س و $minutes د";
       } else if (minutes > 0) {
-        timeLeft = "متبقي $minutes د";
+        timeLeft = "متبقي $minutes د و $seconds ث";
       } else {
         timeLeft = "حان الوقت";
       }
@@ -186,7 +238,15 @@ class _PrayerScreenState extends State<PrayerScreen> {
     String hijriStr =
         "${h.getDayName()}، ${_toLatinNumbers(h.hDay)} ${h.getLongMonthName()} ${_toLatinNumbers(h.hYear)}";
 
-    _updateHomeWidget(hijriStr, nextName!, nextTime!, timeLeft);
+    if (timeLeft != _lastSentTimeLeft) {
+      _lastSentTimeLeft = timeLeft;
+      if (mounted) {
+        setState(() {
+          timeLeftString = timeLeft;
+        });
+      }
+      _updateHomeWidget(hijriStr, nextName!, nextTime!, timeLeft);
+    }
   }
 
   Future<void> _updateHomeWidget(
@@ -195,15 +255,27 @@ class _PrayerScreenState extends State<PrayerScreen> {
     String prayerTime,
     String timeLeft,
   ) async {
-    await HomeWidget.saveWidgetData<String>('id_hijri_date', hijri);
-    await HomeWidget.saveWidgetData<String>('id_next_prayer_name', prayerName);
-    await HomeWidget.saveWidgetData<String>('id_next_prayer_time', prayerTime);
-    await HomeWidget.saveWidgetData<String>('id_time_left', timeLeft);
+    try {
+      await HomeWidget.saveWidgetData<String>('id_hijri_date', hijri);
+      await HomeWidget.saveWidgetData<String>(
+        'id_next_prayer_name',
+        prayerName,
+      );
+      await HomeWidget.saveWidgetData<String>(
+        'id_next_prayer_time',
+        prayerTime,
+      );
+      await HomeWidget.saveWidgetData<String>('id_time_left', timeLeft);
 
-    await HomeWidget.updateWidget(
-      name: 'PrayerWidgetProvider',
-      androidName: 'PrayerWidgetProvider',
-    );
+      final result = await HomeWidget.updateWidget(
+        name: 'PrayerWidgetProvider',
+        androidName: 'PrayerWidgetProvider',
+        qualifiedAndroidName: 'com.example.awksalat.PrayerWidgetProvider',
+      );
+      debugPrint("Widget update result: $result for $timeLeft");
+    } catch (e) {
+      debugPrint("Error updating widget: $e");
+    }
   }
 
   String _formatTime(String time) {
@@ -236,7 +308,9 @@ class _PrayerScreenState extends State<PrayerScreen> {
     return Scaffold(
       body: SafeArea(
         child: isLoading
-            ? const Center(child: CircularProgressIndicator(color: Colors.white24))
+            ? const Center(
+                child: CircularProgressIndicator(color: Colors.white24),
+              )
             : Padding(
                 padding: const EdgeInsets.all(10),
                 child: Column(
@@ -249,14 +323,16 @@ class _PrayerScreenState extends State<PrayerScreen> {
                         child: Text(
                           customHijriDate,
                           style: const TextStyle(
-                            color: Colors.white70,
+                            color: Colors.white,
                             fontWeight: FontWeight.w300,
+                            fontSize: 35,
                           ),
                         ),
                       ),
                     ),
+
                     const Divider(color: Colors.white10, thickness: 1),
-                    
+
                     if (todayPrayers != null)
                       ...todayPrayers!.entries.map((entry) {
                         bool isNext = entry.key == nextPrayerName;
@@ -273,8 +349,12 @@ class _PrayerScreenState extends State<PrayerScreen> {
                                     child: Text(
                                       entry.key,
                                       style: TextStyle(
-                                        color: isNext ? Colors.white : Colors.white38,
-                                        fontWeight: isNext ? FontWeight.bold : FontWeight.normal,
+                                        color: isNext
+                                            ? Colors.white
+                                            : Colors.white38,
+                                        fontWeight: isNext
+                                            ? FontWeight.bold
+                                            : FontWeight.normal,
                                       ),
                                     ),
                                   ),
@@ -288,7 +368,9 @@ class _PrayerScreenState extends State<PrayerScreen> {
                                       entry.value,
                                       style: TextStyle(
                                         fontWeight: FontWeight.bold,
-                                        color: isNext ? Colors.greenAccent : Colors.white,
+                                        color: isNext
+                                            ? Colors.greenAccent
+                                            : Colors.white,
                                       ),
                                     ),
                                   ),
