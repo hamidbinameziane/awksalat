@@ -38,15 +38,6 @@ class _PrayerScreenState extends State<PrayerScreen>
   Map<String, String>? todayPrayers;
   String? nextPrayerName;
   bool isLoading = true;
-  Timer? _refreshTimer;
-
-  // Cached data for frequent updates
-  Map<String, String>? _cachedTodayRaw;
-  Map<String, String>? _cachedTomorrowRaw;
-  DateTime? _cachedTodayDate;
-
-  String? _lastSentTimeLeft;
-  String? timeLeftString;
 
   @override
   void initState() {
@@ -54,13 +45,11 @@ class _PrayerScreenState extends State<PrayerScreen>
     WidgetsBinding.instance.addObserver(this);
     HijriCalendar.setLocal('ar'); // Mois et Jours en Arabe
     loadPrayerTimes();
-    _startRefreshTimer();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _refreshTimer?.cancel();
     super.dispose();
   }
 
@@ -70,24 +59,8 @@ class _PrayerScreenState extends State<PrayerScreen>
       // Small delay to ensure the app is fully resumed
       Future.delayed(const Duration(milliseconds: 500), () {
         loadPrayerTimes();
-        _startRefreshTimer();
       });
-    } else if (state == AppLifecycleState.paused) {
-      _refreshTimer?.cancel();
     }
-  }
-
-  void _startRefreshTimer() {
-    _refreshTimer?.cancel();
-    _refreshTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_cachedTodayRaw != null && _cachedTodayDate != null) {
-        _calculateAndUpdateWidget(
-          _cachedTodayDate!,
-          _cachedTodayRaw!,
-          _cachedTomorrowRaw,
-        );
-      }
-    });
   }
 
   Future<void> loadPrayerTimes() async {
@@ -138,10 +111,6 @@ class _PrayerScreenState extends State<PrayerScreen>
       }
 
       if (todayRaw != null) {
-        _cachedTodayRaw = todayRaw;
-        _cachedTomorrowRaw = tomorrowRaw;
-        _cachedTodayDate = now;
-
         setState(() {
           todayPrayers = todayRaw!.map(
             (key, value) => MapEntry(key, _formatTime(value)),
@@ -169,7 +138,6 @@ class _PrayerScreenState extends State<PrayerScreen>
 
     String? nextName;
     String? nextTime;
-    DateTime? nextDateTime;
 
     // Check today's prayers
     for (var entry in todayRaw.entries) {
@@ -186,7 +154,6 @@ class _PrayerScreenState extends State<PrayerScreen>
       if (fullPrayerDateTime.isAfter(now)) {
         nextName = entry.key;
         nextTime = _formatTime(entry.value);
-        nextDateTime = fullPrayerDateTime;
         break;
       }
     }
@@ -195,21 +162,10 @@ class _PrayerScreenState extends State<PrayerScreen>
     if (nextName == null && tomorrowRaw != null) {
       nextName = "الفجر";
       nextTime = _formatTime(tomorrowRaw["الفجر"]!);
-      final prayerTime = timeFormat.parse(tomorrowRaw["الفجر"]!);
-      final tomorrow = todayDate.add(const Duration(days: 1));
-      nextDateTime = DateTime(
-        tomorrow.year,
-        tomorrow.month,
-        tomorrow.day,
-        prayerTime.hour,
-        prayerTime.minute,
-        prayerTime.second,
-      );
     } else if (nextName == null) {
       // Last resort fallback
       nextName = "الفجر";
       nextTime = _formatTime(todayRaw["الفجر"]!);
-      nextDateTime = null;
     }
 
     if (nextName != nextPrayerName && mounted) {
@@ -218,42 +174,17 @@ class _PrayerScreenState extends State<PrayerScreen>
       });
     }
 
-    String timeLeft = "";
-    if (nextDateTime != null) {
-      final difference = nextDateTime.difference(now);
-      final hours = difference.inHours;
-      final minutes = difference.inMinutes % 60;
-      final seconds = difference.inSeconds % 60;
-
-      if (hours > 0) {
-        timeLeft = "متبقي $hours س و $minutes د";
-      } else if (minutes > 0) {
-        timeLeft = "متبقي $minutes د و $seconds ث";
-      } else {
-        timeLeft = "حان الوقت";
-      }
-    }
-
     final h = HijriCalendar.now();
     String hijriStr =
         "${h.getDayName()}، ${_toLatinNumbers(h.hDay)} ${h.getLongMonthName()} ${_toLatinNumbers(h.hYear)}";
 
-    if (timeLeft != _lastSentTimeLeft) {
-      _lastSentTimeLeft = timeLeft;
-      if (mounted) {
-        setState(() {
-          timeLeftString = timeLeft;
-        });
-      }
-      _updateHomeWidget(hijriStr, nextName!, nextTime!, timeLeft);
-    }
+    _updateHomeWidget(hijriStr, nextName!, nextTime!);
   }
 
   Future<void> _updateHomeWidget(
     String hijri,
     String prayerName,
     String prayerTime,
-    String timeLeft,
   ) async {
     try {
       await HomeWidget.saveWidgetData<String>('id_hijri_date', hijri);
@@ -265,14 +196,11 @@ class _PrayerScreenState extends State<PrayerScreen>
         'id_next_prayer_time',
         prayerTime,
       );
-      await HomeWidget.saveWidgetData<String>('id_time_left', timeLeft);
 
       final result = await HomeWidget.updateWidget(
-        name: 'PrayerWidgetProvider',
         androidName: 'PrayerWidgetProvider',
-        qualifiedAndroidName: 'com.example.awksalat.PrayerWidgetProvider',
       );
-      debugPrint("Widget update result: $result for $timeLeft");
+      debugPrint("Widget update result: $result");
     } catch (e) {
       debugPrint("Error updating widget: $e");
     }

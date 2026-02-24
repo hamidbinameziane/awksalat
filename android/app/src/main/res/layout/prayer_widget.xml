@@ -42,12 +42,13 @@
         android:textStyle="bold"
         android:gravity="center" />
 
-    <TextView
-        android:id="@+id/widget_time_left"
+    <TextClock
+        android:id="@+id/widget_current_time"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="42dp"
-        android:text="متبقي 2 س و 15 د"
+        android:format12Hour="hh:mm:ss a"
+        android:format24Hour="HH:mm:ss"
         android:textColor="#80FFFFFF"
         android:textSize="42sp"
         android:gravity="center" />
