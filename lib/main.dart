@@ -36,8 +36,11 @@ class PrayerScreen extends StatefulWidget {
 class _PrayerScreenState extends State<PrayerScreen>
     with WidgetsBindingObserver {
   Map<String, String>? todayPrayers;
+  Map<String, String>? tomorrowPrayers;
   String? nextPrayerName;
+  DateTime? nextPrayerDateTime;
   bool isLoading = true;
+  Timer? _fluidTimer;
 
   @override
   void initState() {
@@ -45,22 +48,33 @@ class _PrayerScreenState extends State<PrayerScreen>
     WidgetsBinding.instance.addObserver(this);
     HijriCalendar.setLocal('ar'); // Mois et Jours en Arabe
     loadPrayerTimes();
+    _startFluidTimer();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _fluidTimer?.cancel();
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // Small delay to ensure the app is fully resumed
       Future.delayed(const Duration(milliseconds: 500), () {
         loadPrayerTimes();
+        _startFluidTimer();
       });
+    } else if (state == AppLifecycleState.paused) {
+      _fluidTimer?.cancel();
     }
+  }
+
+  void _startFluidTimer() {
+    _fluidTimer?.cancel();
+    _fluidTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) setState(() {});
+    });
   }
 
   Future<void> loadPrayerTimes() async {
@@ -77,7 +91,6 @@ class _PrayerScreenState extends State<PrayerScreen>
         if (line.trim().isEmpty) continue;
         List<String> columns = line.split(',');
 
-        // Parse mm-dd format (e.g., 08-11)
         List<String> dateParts = columns[0].split('-');
         if (dateParts.length != 2) continue;
 
@@ -95,26 +108,38 @@ class _PrayerScreenState extends State<PrayerScreen>
             "العشاء": columns[6],
           };
         } else if (foundToday) {
-          tomorrowRaw = {"الفجر": columns[1]};
+          tomorrowRaw = {
+            "الفجر": columns[1],
+            "الشروق": columns[2],
+            "الظهر": columns[3],
+            "العصر": columns[4],
+            "المغرب": columns[5],
+            "العشاء": columns[6],
+          };
           break;
         }
       }
 
-      // Special case: if today is Dec 31st, tomorrow is Jan 1st (first line)
       if (foundToday && tomorrowRaw == null && lines.isNotEmpty) {
         for (String line in lines) {
           if (line.trim().isEmpty) continue;
           List<String> columns = line.split(',');
-          tomorrowRaw = {"الفجر": columns[1]};
+          tomorrowRaw = {
+            "الفجر": columns[1],
+            "الشروق": columns[2],
+            "الظهر": columns[3],
+            "العصر": columns[4],
+            "المغرب": columns[5],
+            "العشاء": columns[6],
+          };
           break;
         }
       }
 
-      if (todayRaw != null) {
+      if (todayRaw != null && tomorrowRaw != null) {
         setState(() {
-          todayPrayers = todayRaw!.map(
-            (key, value) => MapEntry(key, _formatTime(value)),
-          );
+          todayPrayers = todayRaw;
+          tomorrowPrayers = tomorrowRaw;
           isLoading = false;
         });
 
@@ -129,23 +154,22 @@ class _PrayerScreenState extends State<PrayerScreen>
   }
 
   void _calculateAndUpdateWidget(
-    DateTime todayDate,
+    DateTime now,
     Map<String, String> todayRaw,
-    Map<String, String>? tomorrowRaw,
+    Map<String, String> tomorrowRaw,
   ) {
-    final now = DateTime.now();
     final timeFormat = DateFormat("hh:mm:ss a");
 
     String? nextName;
     String? nextTime;
+    DateTime? nextDateTime;
 
-    // Check today's prayers
     for (var entry in todayRaw.entries) {
       final prayerTime = timeFormat.parse(entry.value);
       final fullPrayerDateTime = DateTime(
-        todayDate.year,
-        todayDate.month,
-        todayDate.day,
+        now.year,
+        now.month,
+        now.day,
         prayerTime.hour,
         prayerTime.minute,
         prayerTime.second,
@@ -154,24 +178,33 @@ class _PrayerScreenState extends State<PrayerScreen>
       if (fullPrayerDateTime.isAfter(now)) {
         nextName = entry.key;
         nextTime = _formatTime(entry.value);
+        nextDateTime = fullPrayerDateTime;
         break;
       }
     }
 
-    // If no more prayers today, take tomorrow's Fajr
-    if (nextName == null && tomorrowRaw != null) {
+    if (nextName == null) {
       nextName = "الفجر";
       nextTime = _formatTime(tomorrowRaw["الفجر"]!);
-    } else if (nextName == null) {
-      // Last resort fallback
-      nextName = "الفجر";
-      nextTime = _formatTime(todayRaw["الفجر"]!);
+      final prayerTime = timeFormat.parse(tomorrowRaw["الفجر"]!);
+      final tomorrow = now.add(const Duration(days: 1));
+      nextDateTime = DateTime(
+        tomorrow.year,
+        tomorrow.month,
+        tomorrow.day,
+        prayerTime.hour,
+        prayerTime.minute,
+        prayerTime.second,
+      );
     }
 
     if (nextName != nextPrayerName && mounted) {
       setState(() {
         nextPrayerName = nextName;
+        nextPrayerDateTime = nextDateTime;
       });
+    } else {
+      nextPrayerDateTime = nextDateTime;
     }
 
     final h = HijriCalendar.now();
@@ -224,6 +257,19 @@ class _PrayerScreenState extends State<PrayerScreen>
     return str;
   }
 
+  String _getCountdownText() {
+    if (nextPrayerDateTime == null) return "";
+    final now = DateTime.now();
+    final diff = nextPrayerDateTime!.difference(now);
+    if (diff.isNegative) return "حان الوقت";
+    
+    final h = diff.inHours;
+    final m = diff.inMinutes % 60;
+    final s = diff.inSeconds % 60;
+    
+    return "متبقي ${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}";
+  }
+
   @override
   Widget build(BuildContext context) {
     var h = HijriCalendar.now();
@@ -232,6 +278,9 @@ class _PrayerScreenState extends State<PrayerScreen>
         "${_toLatinNumbers(h.hDay)} "
         "${h.getLongMonthName()} "
         "${_toLatinNumbers(h.hYear)}";
+
+    final now = DateTime.now();
+    final timeFormat = DateFormat("hh:mm:ss a");
 
     return Scaffold(
       body: SafeArea(
@@ -243,7 +292,6 @@ class _PrayerScreenState extends State<PrayerScreen>
                 padding: const EdgeInsets.all(10),
                 child: Column(
                   children: [
-                    // Hijri Date
                     Flexible(
                       flex: 1,
                       child: FittedBox(
@@ -253,7 +301,6 @@ class _PrayerScreenState extends State<PrayerScreen>
                           style: const TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.w300,
-                            fontSize: 35,
                           ),
                         ),
                       ),
@@ -261,9 +308,29 @@ class _PrayerScreenState extends State<PrayerScreen>
 
                     const Divider(color: Colors.white10, thickness: 1),
 
-                    if (todayPrayers != null)
+                    if (todayPrayers != null && tomorrowPrayers != null)
                       ...todayPrayers!.entries.map((entry) {
-                        bool isNext = entry.key == nextPrayerName;
+                        final prayerName = entry.key;
+                        final todayTimeRaw = entry.value;
+                        final tomorrowTimeRaw = tomorrowPrayers![prayerName]!;
+
+                        final prayerTime = timeFormat.parse(todayTimeRaw);
+                        final fullPrayerDateTimeToday = DateTime(
+                          now.year,
+                          now.month,
+                          now.day,
+                          prayerTime.hour,
+                          prayerTime.minute,
+                          prayerTime.second,
+                        );
+
+                        final bool hasPassed =
+                            now.isAfter(fullPrayerDateTimeToday);
+                        final String displayTime = hasPassed
+                            ? "${_formatTime(tomorrowTimeRaw)} (غداً)"
+                            : _formatTime(todayTimeRaw);
+                        final bool isNext = prayerName == nextPrayerName;
+
                         return Expanded(
                           flex: 2,
                           child: Padding(
@@ -275,7 +342,7 @@ class _PrayerScreenState extends State<PrayerScreen>
                                     alignment: Alignment.centerRight,
                                     fit: BoxFit.contain,
                                     child: Text(
-                                      entry.key,
+                                      prayerName,
                                       style: TextStyle(
                                         color: isNext
                                             ? Colors.white
@@ -292,14 +359,29 @@ class _PrayerScreenState extends State<PrayerScreen>
                                   child: FittedBox(
                                     alignment: Alignment.centerLeft,
                                     fit: BoxFit.contain,
-                                    child: Text(
-                                      entry.value,
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: isNext
-                                            ? Colors.greenAccent
-                                            : Colors.white,
-                                      ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          displayTime,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: isNext
+                                                ? Colors.greenAccent
+                                                : Colors.white,
+                                          ),
+                                        ),
+                                        if (isNext)
+                                          Text(
+                                            _getCountdownText(),
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.greenAccent,
+                                              fontWeight: FontWeight.w300,
+                                            ),
+                                          ),
+                                      ],
                                     ),
                                   ),
                                 ),
