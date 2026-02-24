@@ -3,7 +3,7 @@
     <application
         android:label="awksalat"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@mipmap/launcher_icon"
         android:supportsRtl="true">
         <activity
             android:name=".MainActivity"
