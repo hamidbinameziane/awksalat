@@ -1,0 +1,53 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#0F0F0F"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:padding="8dp">
+
+    <TextView
+        android:id="@+id/widget_hijri_date"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="الجمعة، 6 رمضان 1447"
+        android:textColor="#B3FFFFFF"
+        android:textSize="42sp"
+        android:gravity="top|center_horizontal" />
+
+    <FrameLayout
+        android:layout_width="160dp"
+        android:layout_height="5dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="42dp"
+        android:background="#1AFFFFFF" />
+
+    <TextView
+        android:id="@+id/next_prayer_name"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="الفجر"
+        android:textColor="#66FFFFFF"
+        android:textSize="42sp"
+        android:gravity="center" />
+
+    <TextView
+        android:id="@+id/next_prayer_time"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="05:12 ص"
+        android:textColor="#FFFFFF"
+        android:textSize="42sp"
+        android:textStyle="bold"
+        android:gravity="center" />
+
+    <TextView
+        android:id="@+id/widget_time_left"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="42dp"
+        android:text="متبقي 2 س و 15 د"
+        android:textColor="#80FFFFFF"
+        android:textSize="42sp"
+        android:gravity="center" />
+</LinearLayout>
